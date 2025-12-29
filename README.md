@@ -76,6 +76,14 @@ sudo chmod +x /usr/local/bin/planka-tui
 
 Run the application:
 
+### Binary
+
+```bash
+planka-tui
+```
+
+### From source
+
 ```bash
 python main.py
 ```
