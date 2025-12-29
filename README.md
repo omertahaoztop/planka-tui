@@ -16,6 +16,31 @@ A Textual-based Terminal User Interface (TUI) for [Planka](https://github.com/pl
 
 ## Installation
 
+### Release binary (Linux)
+
+1.  Download the latest `planka-tui-linux-amd64` from Releases:
+    https://github.com/omertahaoztop/planka-tui/releases
+
+2.  Make it executable:
+    ```bash
+    chmod +x planka-tui-linux-amd64
+    ```
+
+3.  Run:
+    ```bash
+    ./planka-tui-linux-amd64
+    ```
+
+Example (system-wide install with `wget`):
+
+```bash
+# Download the binary and make it executable
+sudo wget https://github.com/omertahaoztop/planka-tui/releases/latest/download/planka-tui-linux-amd64 -O /usr/local/bin/planka-tui
+sudo chmod +x /usr/local/bin/planka-tui
+```
+
+### From source
+
 1.  Clone the repository:
     ```bash
     git clone <repository_url>
