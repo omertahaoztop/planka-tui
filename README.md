@@ -62,17 +62,36 @@ planka-tui
 
 ## Configuration
 
-1.  Copy the example environment file:
-    ```bash
-    cp .env.example .env
-    ```
+Configuration is loaded from the first file found (in order):
+1. `/etc/default/planka-tui` (system-wide, recommended for binary installs)
+2. `~/.config/planka-tui/config` (user-specific)
+3. `.env` in current directory (for development)
 
-2.  Edit `.env` and add your Planka credentials:
-    ```env
-    PLANKA_API_URL=https://your-planka-instance.com/api
-    PLANKA_USERNAME=your_username
-    PLANKA_PASSWORD=your_password
-    ```
+### Binary install (recommended)
+
+```bash
+sudo tee /etc/default/planka-tui << 'EOF'
+PLANKA_API_URL=https://your-planka-instance.com/api
+PLANKA_USERNAME=your_username
+PLANKA_PASSWORD=your_password
+EOF
+sudo chmod 600 /etc/default/planka-tui
+```
+
+### From source
+
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### Required variables
+
+```
+PLANKA_API_URL=https://your-planka-instance.com/api
+PLANKA_USERNAME=your_username
+PLANKA_PASSWORD=your_password
+```
 
 ## Usage
 
