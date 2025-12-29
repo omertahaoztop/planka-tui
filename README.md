@@ -37,6 +37,8 @@ Example (system-wide install with `wget`):
 # Download the binary and make it executable
 sudo wget https://github.com/omertahaoztop/planka-tui/releases/latest/download/planka-tui-linux-amd64 -O /usr/local/bin/planka-tui
 sudo chmod +x /usr/local/bin/planka-tui
+# Run
+planka-tui
 ```
 
 ### From source
