@@ -1,0 +1,102 @@
+Screen {
+    align: center middle;
+}
+
+#dashboard_container {
+    width: 80%;
+    height: 80%;
+    border: solid green;
+}
+
+.title {
+    content-align: center middle;
+    width: 100%;
+    background: $primary;
+    color: $text;
+    margin-bottom: 1;
+}
+
+/* Board Screen */
+#board_container {
+    height: 100%;
+    width: 100%;
+    overflow-x: auto;
+}
+
+.list_column {
+    width: 1fr;
+    min-width: 40;
+    height: 100%;
+    margin: 1;
+    border: solid $secondary;
+    background: $surface;
+}
+
+.list_column:focus {
+    border: double $accent;
+    background: $surface-lighten-1;
+}
+
+.modal_header {
+    text-style: bold;
+    border-bottom: solid $primary;
+    margin-bottom: 1;
+    width: 100%;
+    text-align: center;
+    height: auto;
+}
+
+.list_title {
+    width: 100%;
+    text-align: center;
+    background: $accent;
+    color: $text;
+    padding: 1;
+    text-style: bold;
+}
+
+.card {
+    height: auto;
+    min-height: 3;
+    margin: 1;
+    padding: 1;
+    border: solid $primary;
+    background: $panel;
+}
+
+.card:focus {
+    border: double $accent;
+    background: $primary-darken-1;
+}
+
+.card_title {
+    text-align: left;
+    height: auto;
+    width: 100%;
+}
+
+/* Modal */
+.modal_dialog {
+    width: 60;
+    height: 14;
+    border: solid $accent;
+    background: $surface;
+    padding: 2;
+    align: center middle;
+    height: auto;
+}
+
+.modal_buttons {
+    width: 100%;
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+.modal_buttons Button {
+    margin: 1;
+}
+
+Input {
+    margin-top: 2;
+}
