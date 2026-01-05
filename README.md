@@ -119,6 +119,7 @@ python main.py
 | `Up` | Previous Card |
 | `a` | Add Card |
 | `d` | Delete Card |
+| `D` (Shift+D) | Clear List (delete all cards) |
 | `c` | Mark Card as Done |
 | `Enter` | View Card Details |
 | `Esc` | Back / Cancel |
