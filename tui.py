@@ -1,438 +1,446 @@
-from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll
-from textual.widgets import Header, Footer, Button, Label, Tree, Static, Input
+from __future__ import annotations
+
+from textual.app import ComposeResult
+from textual.containers import Container, Horizontal, VerticalScroll, Vertical
+from textual.widgets import Header, Footer, Button, Label, Tree, Input, LoadingIndicator, Static
 from textual.screen import ModalScreen, Screen
+from textual import work
+from textual.widget import Widget
+from rich.text import Text
+
 from client import PlankaClient
 
+
+def _one_line(text: str, maxlen: int = 0) -> str:
+    """Collapse multiline text to a single line (no hard truncation; Rich handles overflow)."""
+    if not text:
+        return "Untitled"
+    line = text.replace("\r", "").split("\n")[0].strip()
+    if not line:
+        return "Untitled"
+    # Only hard-truncate when an explicit maxlen is requested (e.g. notify messages)
+    if maxlen and len(line) > maxlen:
+        line = line[: maxlen - 1] + "…"
+    return line
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class ProjectBoardTree(Screen):
-    """Screen to select a board from projects."""
+    """Dashboard — pick a board."""
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Container(
-            Label("Select a Board", classes="title"),
-            Tree("Projects", id="project_tree"),
-            id="dashboard_container",
-        )
+        with Vertical(id="dashboard_container"):
+            yield Static("planka · tui", classes="dashboard_logo")
+            yield Tree("Boards", id="project_tree")
         yield Footer()
 
     def on_mount(self) -> None:
-        """Load projects and boards into the tree."""
-        tree = self.query_one("#project_tree", Tree)
-        tree.root.expand()
+        self._load()
 
+    @work(thread=True)
+    def _load(self) -> None:
         try:
             planka = PlankaClient.get_instance()
             projects = planka.projects
-
-            for project in projects:
-                project_node = tree.root.add(project.name, expand=True)
-                for board in project.boards:
-                    project_node.add_leaf(board.name, data=board)
-
+            self.app.call_from_thread(self._populate, projects)
         except Exception as e:
-            self.notify(f"Error loading boards: {e}", severity="error")
+            self.app.call_from_thread(
+                self.notify, f"Connection error: {e}", severity="error"
+            )
+
+    def _populate(self, projects) -> None:
+        tree = self.query_one("#project_tree", Tree)
+        tree.root.expand()
+        for project in projects:
+            pnode = tree.root.add(project.name, expand=True)
+            for board in project.boards:
+                pnode.add_leaf(board.name, data=board)
 
     def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
-        """Handle board selection."""
         if not event.node.allow_expand and event.node.data:
-            board = event.node.data
-            self.app.push_screen(BoardScreen(board))
+            self.app.push_screen(BoardScreen(event.node.data))
 
 
-class CardWidget(Static):
-    """A widget representing a card in the Kanban board."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Card widget — a focusable Label row
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class CardWidget(Widget):
+    """Single-line focusable card row."""
 
     can_focus = True
+    DEFAULT_CSS = "CardWidget { height: 1; min-height: 1; max-height: 1; }"
 
     def __init__(self, card, **kwargs):
         super().__init__(**kwargs)
         self.card = card
 
-    def compose(self) -> ComposeResult:
-        name = self.card.name if self.card.name else "Untitled Card"
-        # Truncate to fit column width (44 - 2 border - 2 padding = 40 usable)
-        if len(name) > 38:
-            name = name[:35] + "..."
-        yield Label(name, classes="card_title")
+    def on_focus(self) -> None:
+        self.refresh()
+
+    def on_blur(self) -> None:
+        self.refresh()
+
+    def render(self) -> Text:
+        name = _one_line(self.card.name)
+        bullet = "▶ " if self.has_focus else "· "
+        avail = max(4, (self.size.width or 38) - 4)
+        t = Text(bullet + name, no_wrap=True, overflow="ellipsis")
+        t.truncate(avail, overflow="ellipsis")
+        return t
+
+# ─────────────────────────────────────────────────────────────────────────────
+# List column
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 class ListColumn(VerticalScroll):
-    """A column representing a list in the Kanban board."""
+    """Vertical column for one Planka list."""
 
-    can_focus = True  # Allow focusing the list itself (useful for empty lists)
+    can_focus = True
 
     BINDINGS = [
-        ("down", "next_card", "Next Card"),
-        ("up", "prev_card", "Prev Card"),
+        ("down", "next_card", "↓"),
+        ("up", "prev_card", "↑"),
     ]
-
-    def action_next_card(self):
-        self._navigate_card(1)
-
-    def action_prev_card(self):
-        self._navigate_card(-1)
-
-    def _navigate_card(self, direction: int):
-        # We need to find what is focused.
-        # Since this method is on the ListColumn, we expect one of our children (Cards) to be focused,
-        # OR self explicitly if empty.
-
-        cards = list(self.query(CardWidget))
-        if not cards:
-            return
-
-        focused = self.screen.focused
-
-        if focused == self:
-            # If list is focused and we press down/up, go to first card?
-            if cards:
-                cards[0].focus()
-            return
-
-        if focused in cards:
-            current_index = cards.index(focused)
-            next_index = current_index + direction
-
-            if 0 <= next_index < len(cards):
-                cards[next_index].focus()
-            # Else stop at boundaries
 
     def __init__(self, planka_list, **kwargs):
         super().__init__(**kwargs)
         self.planka_list = planka_list
 
+    def _cards(self) -> list[CardWidget]:
+        return list(self.query(CardWidget))
+
+    def action_next_card(self) -> None:
+        self._move(1)
+
+    def action_prev_card(self) -> None:
+        self._move(-1)
+
+    def _move(self, d: int) -> None:
+        cards = self._cards()
+        if not cards:
+            return
+        focused = self.screen.focused
+        if focused == self:
+            cards[0].focus()
+            return
+        if focused in cards:
+            i = cards.index(focused) + d
+            if 0 <= i < len(cards):
+                cards[i].focus()
+
     def on_focus(self) -> None:
-        """When list is focused, try to focus its first card if available."""
-        # If we just tabbed to the list, we might want to focus the first card immediately
-        # But if the list is empty, we stay focused on the list column.
-        cards = list(self.query(CardWidget))
+        cards = self._cards()
         if cards:
             cards[0].focus()
 
     def compose(self) -> ComposeResult:
-        name = self.planka_list.name if self.planka_list.name else "Untitled List"
         cards = list(self.planka_list.cards)
-        yield Label(f"{name} ({len(cards)})", classes="list_title")
+        name = self.planka_list.name or "—"
+        yield Label(f"{name}  [{len(cards)}]", classes="list_header")
         for card in cards:
             yield CardWidget(card, classes="card")
 
-class InputModal(ModalScreen[str]):
-    """Modal to get text input from user."""
+    def refresh_header(self) -> None:
+        count = len(self._cards())
+        self.query_one(".list_header", Label).update(
+            f"{self.planka_list.name}  [{count}]"
+        )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Modals
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class InputModal(ModalScreen[str | None]):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
     def __init__(self, prompt: str):
         super().__init__()
-        self.prompt = prompt
+        self.prompt_text = prompt
 
     def compose(self) -> ComposeResult:
-        with Container(classes="modal_dialog"):
-            yield Label(self.prompt)
-            yield Input(id="input_field")
-            with Horizontal(classes="modal_buttons"):
-                yield Button("OK", variant="primary", id="ok_btn")
-                yield Button("Cancel", variant="error", id="cancel_btn")
+        with Container(classes="modal_box"):
+            yield Label(self.prompt_text, classes="modal_title")
+            yield Input(id="modal_input", classes="modal_input")
+            with Horizontal(classes="modal_row"):
+                yield Button("OK", variant="primary", id="ok")
+                yield Button("Cancel", id="cancel")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "ok_btn":
-            input_widget = self.query_one(Input)
-            self.dismiss(input_widget.value)
-        elif event.button.id == "cancel_btn":
+    def on_button_pressed(self, e: Button.Pressed) -> None:
+        if e.button.id == "ok":
+            self.dismiss(self.query_one(Input).value or None)
+        else:
             self.dismiss(None)
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.dismiss(event.value)
+    def on_input_submitted(self, e: Input.Submitted) -> None:
+        self.dismiss(e.value or None)
 
-    def action_cancel(self):
+    def action_cancel(self) -> None:
         self.dismiss(None)
 
 
-class ConfirmationModal(ModalScreen[bool]):
-    """Modal to confirm an action."""
+class ConfirmModal(ModalScreen[bool]):
+    BINDINGS = [("escape", "no", "No"), ("y", "yes", "Yes")]
 
     def __init__(self, prompt: str):
         super().__init__()
-        self.prompt = prompt
+        self.prompt_text = prompt
 
     def compose(self) -> ComposeResult:
-        with Container(classes="modal_dialog"):
-            yield Label(self.prompt)
-            with Horizontal(classes="modal_buttons"):
-                yield Button("Yes", variant="primary", id="yes_btn")
-                yield Button("No", variant="error", id="no_btn")
+        with Container(classes="modal_box"):
+            yield Label(self.prompt_text, classes="modal_title")
+            with Horizontal(classes="modal_row"):
+                yield Button("Yes  [y]", variant="error", id="yes")
+                yield Button("No [esc]", id="no")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "yes_btn":
-            self.dismiss(True)
-        else:
-            self.dismiss(False)
+    def on_button_pressed(self, e: Button.Pressed) -> None:
+        self.dismiss(e.button.id == "yes")
+
+    def action_yes(self) -> None:
+        self.dismiss(True)
+
+    def action_no(self) -> None:
+        self.dismiss(False)
 
 
-class DetailsModal(ModalScreen):
-    """Modal to show card details."""
+class DetailModal(ModalScreen):
+    BINDINGS = [("escape", "close", "Close"), ("q", "close", "Close")]
 
-    def __init__(self, title: str, description: str):
+    def __init__(self, title: str, body: str):
         super().__init__()
-        self.card_title = title
-        self.description = description
+        self._title = title
+        self._body = body
 
     def compose(self) -> ComposeResult:
-        with Container(classes="modal_dialog details_modal"):
-            yield Label(f"Details for {self.card_title}", classes="modal_header")
-            yield Label(self.description, classes="modal_body")
-            yield Button("Close", variant="primary", id="close_btn")
+        with Container(classes="modal_box detail_box"):
+            yield Label(self._title, classes="modal_title")
+            yield Label(self._body or "No description.", classes="modal_body")
+            yield Button("Close  [esc]", variant="primary", id="close")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    def on_button_pressed(self, _: Button.Pressed) -> None:
+        self.dismiss()
+
+    def action_close(self) -> None:
         self.dismiss()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Board screen
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class BoardScreen(Screen):
-    """Screen to view a specific board."""
+    """Kanban board."""
 
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back"),
-        ("a", "add_card", "Add Card"),
-        ("d", "delete_card", "Delete Card"),
+        ("escape", "app.pop_screen", "← Back"),
+        ("a", "add_card", "+ Card"),
+        ("d", "delete_card", "Delete"),
         ("D", "clear_list", "Clear List"),
-        ("c", "mark_done", "Mark Done"),
+        ("c", "mark_done", "✓ Done"),
         ("enter", "view_details", "Details"),
-        ("tab", "next_column", "Next List"),
-        ("shift+tab", "prev_column", "Prev List"),
-        ("right", "next_column", "Next List"),
-        ("left", "prev_column", "Prev List"),
+        ("r", "reload", "Reload"),
     ]
 
     def __init__(self, board, **kwargs):
         super().__init__(**kwargs)
-        self.board = board
+        self._stub = board
+        self._board = None
 
     def compose(self) -> ComposeResult:
         yield Header()
-
-        # Horizontal container for lists
-        with Horizontal(id="board_container"):
-            try:
-                for lst in self.board.lists:
-                    # Filter out lists with None name or empty name if desired
-                    if lst.name:
-                        # Ensure we can find this specific column later.
-                        # We rely on query(ListColumn) order.
-                        yield ListColumn(lst, classes="list_column")
-            except Exception as e:
-                yield Label(f"Error loading lists: {e}")
-
+        yield LoadingIndicator(id="loading")
+        yield Horizontal(id="board")
         yield Footer()
 
-    def action_next_column(self):
-        self._navigate_column(1)
+    def on_mount(self) -> None:
+        self._fetch()
 
-    def action_prev_column(self):
-        self._navigate_column(-1)
+    @work(thread=True)
+    def _fetch(self) -> None:
+        try:
+            board = PlankaClient.get_instance().load_board(self._stub)
+            self.app.call_from_thread(self._show_board, board)
+        except Exception as e:
+            self.app.call_from_thread(
+                self.notify, f"Failed to load board: {e}", severity="error"
+            )
 
-    def _navigate_column(self, direction: int):
-        """Move focus to the next/prev column, preserving index if possible."""
-        current_list = self._get_focused_list()
-        all_lists = list(self.query(ListColumn))
+    def _show_board(self, board) -> None:
+        self._board = board
+        self.query_one("#loading").display = False
+        container = self.query_one("#board", Horizontal)
+        container.remove_children()
+        for lst in board.lists:
+            if lst.name:
+                container.mount(ListColumn(lst, classes="list_col"))
+        self.sub_title = board.name
 
-        if not all_lists:
+    def action_reload(self) -> None:
+        self.query_one("#loading").display = True
+        self.query_one("#board", Horizontal).remove_children()
+        self._fetch()
+
+    # ── navigation ──────────────────────────────────────────────────────────
+
+    def _shift_col(self, d: int) -> None:
+        cols = list(self.query(ListColumn))
+        if not cols:
             return
+        cur = self._focused_col()
+        idx = (cols.index(cur) + d) % len(cols) if cur in cols else 0
+        cols[idx].focus()
 
-        next_index = 0
-        if current_list in all_lists:
-            current_index = all_lists.index(current_list)
-            next_index = (current_index + direction) % len(all_lists)
-        else:
-            # If nothing strictly focused, default to 0 or stay
-            pass
+    def on_key(self, e) -> None:
+        if e.key == "tab":
+            self._shift_col(1)
+            e.stop()
+        elif e.key == "shift+tab":
+            self._shift_col(-1)
+            e.stop()
+        elif e.key == "right":
+            self._shift_col(1)
+            e.stop()
+        elif e.key == "left":
+            self._shift_col(-1)
+            e.stop()
 
-        target_list = all_lists[next_index]
-        target_list.focus()
+    def _focused_card(self) -> CardWidget | None:
+        f = self.app.focused
+        return f if isinstance(f, CardWidget) else None
 
-    def on_key(self, event) -> None:
-        """Override default tab behavior if needed."""
-        if event.key == "tab":
-            self.action_next_column()
-            event.stop()  # Prevent default focus movement
-        elif event.key == "shift+tab":
-            self.action_prev_column()
-            event.stop()
-
-    def _get_focused_card(self):
-        focused = self.app.focused
-        if isinstance(focused, CardWidget):
-            return focused
+    def _focused_col(self) -> ListColumn | None:
+        f = self.app.focused
+        if isinstance(f, CardWidget) and isinstance(f.parent, ListColumn):
+            return f.parent
+        if isinstance(f, ListColumn):
+            return f
         return None
 
-    def _get_focused_list(self):
-        """Find the list containing the focused card or the list itself if focused."""
-        focused = self.app.focused
-        # If a card is focused, its parent is the ListColumn (VerticalScroll)
-        # Note: CardWidget items are children of ListColumn
-        if isinstance(focused, CardWidget):
-            # In Textual, widget.parent is the container.
-            # CardWidget -> ListColumn
-            if isinstance(focused.parent, ListColumn):
-                return focused.parent
-        elif isinstance(focused, ListColumn):
-            return focused
-        return None
+    # ── actions ─────────────────────────────────────────────────────────────
 
-    def action_add_card(self):
-        """Add a card to the current list."""
-        target_list_column = self._get_focused_list()
-
-        # If no list is focused (e.g. at start), maybe default to first list?
-        if not target_list_column:
-            # Try to get the first list column
+    def action_add_card(self) -> None:
+        col = self._focused_col()
+        if col is None:
             try:
-                target_list_column = self.query_one(ListColumn)
-            except:
-                self.notify("No list available to add card.", severity="warning")
+                col = self.query_one(ListColumn)
+            except Exception:
+                self.notify("No list found.", severity="warning")
                 return
 
-        def handle_input(name: str):
-            if name:
-                try:
-                    # Create card via API
-                    # Using target_list_column.planka_list.create_card(name) if plankapy supports it
-                    # Checking plankapy interfaces: List has 'create_card' or we use 'routes'
-                    # Assuming typical model method:
-                    new_card = target_list_column.planka_list.create_card(name=name)
+        def _done(name: str | None) -> None:
+            if not name:
+                return
+            try:
+                card = col.planka_list.create_card(name=name)
+                col.mount(CardWidget(card, classes="card"))
+                col.refresh_header()
+                self.notify(f"Added: {_one_line(name, 30)}")
+            except Exception as ex:
+                self.notify(f"Error: {ex}", severity="error")
 
-                    # Update UI
-                    target_list_column.mount(CardWidget(new_card, classes="card"))
-                    self.notify(f"Added card: {name}")
-                except Exception as e:
-                    self.notify(f"Error creating card: {e}", severity="error")
+        self.app.push_screen(InputModal("New card name:"), _done)
 
-        self.app.push_screen(InputModal("Enter card name:"), handle_input)
-
-    def action_delete_card(self):
-        """Delete the focused card."""
-        card_widget = self._get_focused_card()
-        if card_widget:
-
-            def handle_confirm(confirm: bool):
-                if confirm:
-                    try:
-                        # Delete via API
-                        card_widget.card.delete()
-                        # Update UI
-                        card_widget.remove()
-                        self.notify("Card deleted.")
-                    except Exception as e:
-                        self.notify(f"Error deleting card: {e}", severity="error")
-
-            self.app.push_screen(
-                ConfirmationModal(f"Delete '{card_widget.card.name}'?"), handle_confirm
-            )
-        else:
-            self.notify("No card selected.", severity="warning")
-
-    def action_mark_done(self):
-        """Move card to 'Done'/'Tamamlandı' list."""
-        card_widget = self._get_focused_card()
-        if not card_widget:
+    def action_delete_card(self) -> None:
+        cw = self._focused_card()
+        if cw is None:
             self.notify("No card selected.", severity="warning")
             return
 
-        # Find the "Done" list
-        done_list = None
-        target_keywords = ["done", "completed", "tamamlandı", "tamamlanan", "finished"]
+        def _done(ok: bool) -> None:
+            if not ok:
+                return
+            try:
+                col = cw.parent
+                cw.card.delete()
+                cw.remove()
+                if isinstance(col, ListColumn):
+                    col.refresh_header()
+                self.notify("Deleted.")
+            except Exception as ex:
+                self.notify(f"Error: {ex}", severity="error")
 
-        # We need to iterate over all lists in the board
-        # The board object is self.board
-        # But we also need the UI component to move the widget visually without full reload if possible
+        self.app.push_screen(
+            ConfirmModal(f"Delete '{_one_line(cw.card.name, 40)}'?"), _done
+        )
 
-        target_planka_list = None
-        target_list_ui = None
+    def action_mark_done(self) -> None:
+        cw = self._focused_card()
+        if cw is None:
+            self.notify("No card selected.", severity="warning")
+            return
 
-        for ui_list in self.query(ListColumn):
-            if (
-                ui_list.planka_list.name
-                and ui_list.planka_list.name.lower() in target_keywords
-            ):
-                target_planka_list = ui_list.planka_list
-                target_list_ui = ui_list
+        DONE_KW = {"done", "completed", "tamamlandı", "tamamlanan", "finished"}
+        target_col: ListColumn | None = None
+        for col in self.query(ListColumn):
+            if col.planka_list.name and col.planka_list.name.lower() in DONE_KW:
+                target_col = col
                 break
 
-        if not target_planka_list:
-            # Fallback: check all lists on the board object just in case UI didn't render it?
-            # Or just notify user
-            self.notify("Could not find a 'Done' list.", severity="warning")
+        if target_col is None:
+            self.notify("'Done' list not found.", severity="warning")
             return
 
-        if target_planka_list.id == card_widget.card.schema['listId']:
-            self.notify("Card is already in Done list.")
+        if target_col.planka_list._data["id"] == cw.card.listId:
+            self.notify("Card is already in Done.")
             return
 
         try:
-            # Move via API (v2)
-            card_widget.card.move(target_planka_list)
+            src = cw.parent
+            cw.card.move(target_col.planka_list)
+            cw.remove()
+            if isinstance(src, ListColumn):
+                src.refresh_header()
+            target_col.mount(CardWidget(cw.card, classes="card"))
+            target_col.refresh_header()
+            self.notify("Marked as done.")
+        except Exception as ex:
+            self.notify(f"Error: {ex}", severity="error")
 
-            # UI Update: Remove from current, add to new
-            card_widget.remove()
-            # Ideally we re-create the widget to bind to the updated card,
-            # but card object is mutated in place by editor() usually?
-            # Let's just mount the existing widget instance if Textual allows re-mounting
-            # Or create new one. Safer to create new one to ensure clean state.
-            target_list_ui.mount(CardWidget(card_widget.card, classes="card"))
+    def action_view_details(self) -> None:
+        cw = self._focused_card()
+        if cw:
+            self.app.push_screen(DetailModal(cw.card.name, cw.card.description))
 
-            self.notify("Moved to Done.")
-
-        except Exception as e:
-            self.notify(f"Error moving card: {e}", severity="error")
-
-    def action_view_details(self):
-        card_widget = self._get_focused_card()
-        if card_widget:
-            # Fast enough to be sync
-            try:
-                desc = card_widget.card.description
-                if not desc:
-                    desc = "No description entered."
-
-                self.app.push_screen(DetailsModal(card_widget.card.name, desc))
-            except Exception as e:
-                self.notify(f"Error viewing details: {e}", severity="error")
-
-    def action_clear_list(self):
-        """Delete all cards in the focused list."""
-        target_list = self._get_focused_list()
-
-        if not target_list:
+    def action_clear_list(self) -> None:
+        col = self._focused_col()
+        if col is None:
             self.notify("No list selected.", severity="warning")
             return
-
-        cards = list(target_list.query(CardWidget))
+        cards = col._cards()
         if not cards:
             self.notify("List is already empty.", severity="warning")
             return
 
-        list_name = target_list.planka_list.name or "this list"
+        def _done(ok: bool) -> None:
+            if not ok:
+                return
+            deleted, failed = 0, 0
+            for cw in cards:
+                try:
+                    cw.card.delete()
+                    cw.remove()
+                    deleted += 1
+                except Exception:
+                    failed += 1
+            col.refresh_header()
+            sev = "warning" if failed else "information"
+            self.notify(
+                f"{deleted} card(s) deleted."
+                + (f" {failed} failed." if failed else ""),
+                severity=sev,
+            )
 
-        def handle_confirm(confirm: bool | None):
-            if confirm:
-                deleted_count = 0
-                errors = []
-
-                for card_widget in cards:
-                    try:
-                        card_widget.card.delete()
-                        card_widget.remove()
-                        deleted_count += 1
-                    except Exception as e:
-                        errors.append(str(e))
-
-                if errors:
-                    self.notify(
-                        f"Deleted {deleted_count} cards, {len(errors)} failed.",
-                        severity="warning",
-                    )
-                else:
-                    self.notify(f"Cleared {deleted_count} cards from {list_name}.")
-
+        name = col.planka_list.name or "this list"
         self.app.push_screen(
-            ConfirmationModal(f"Delete ALL {len(cards)} cards from '{list_name}'?"),
-            handle_confirm,
+            ConfirmModal(f"Delete all {len(cards)} cards in '{name}'?"), _done
         )

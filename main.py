@@ -53,139 +53,77 @@ from tui import ProjectBoardTree
 class PlankaApp(App):
     # Inline CSS — PyInstaller breaks CSS_PATH resolution in onefile mode
     CSS = """
-    Screen {
-        background: $surface;
-    }
+    Screen { background: #0d1117; }
 
-    /* ── Dashboard ── */
+    Header { background: #161b22; color: #58a6ff; text-style: bold; }
+    Footer { background: #161b22; color: #6e7681; }
+
     #dashboard_container {
-        width: 100%;
-        height: 100%;
-        padding: 1 2;
-        background: $surface;
+        width: 100%; height: 100%; align: center middle;
+        background: #0d1117;
     }
-
-    .title {
-        width: 100%;
-        text-align: center;
-        text-style: bold;
-        color: $text-muted;
-        padding: 1 0 0 0;
+    .dashboard_logo {
+        width: 64; text-align: center;
+        color: #58a6ff; text-style: bold; padding: 1 0;
     }
-
     #project_tree {
-        margin: 1 2;
+        width: 64; height: auto; max-height: 80%;
+        background: #161b22; border: round #30363d; padding: 1 2; margin: 0;
     }
+    Tree > .tree--cursor { background: #1f6feb 60%; color: #e6edf3; text-style: bold; }
 
-    /* ── Board ── */
-    #board_container {
-        height: 1fr;
-        width: auto;
-        min-width: 100%;
-        overflow-x: auto;
-        background: $surface;
+    #board {
+        height: 1fr; width: 100%;
+        overflow-x: auto; background: #0d1117; padding: 0 1;
     }
+    #loading { width: 100%; height: 1fr; color: #388bfd; }
 
-    .list_column {
-        width: 44;
-        min-width: 44;
-        max-width: 44;
-        height: 100%;
-        padding: 0 1;
-        border-right: tall $warning 40%;
-        background: $surface;
-        scrollbar-size: 1 1;
+    .list_col {
+        width: 1fr; min-width: 20;
+        height: 100%; margin: 0 1 0 0; padding: 0;
+        background: #161b22; border: tall #21262d;
+        scrollbar-size: 1 1; scrollbar-color: #21262d;
+        scrollbar-color-hover: #388bfd;
     }
+    .list_col:focus-within { border: tall #388bfd; }
 
-    .list_column:focus-within {
-        border-right: tall $warning;
+    .list_header {
+        width: 100%; height: 1; padding: 0 1;
+        background: #21262d; color: #c9d1d9;
+        text-style: bold; overflow: hidden;
     }
+    .list_col:focus-within .list_header { background: #1f3a6e; color: #79c0ff; }
 
-    .list_title {
-        width: 100%;
-        text-align: center;
-        text-style: bold;
-        color: $warning;
-        background: $surface;
-        height: 1;
-        max-height: 1;
-        overflow: hidden;
-    }
-
-    /* ── Cards ── */
     .card {
-        height: 1;
-        max-height: 1;
-        padding: 0 1;
-        background: $surface;
+        width: 100%; height: 1; min-height: 1; max-height: 1;
+        padding: 0 2; color: #8b949e;
+        background: transparent; overflow: hidden hidden;
     }
+    .card:hover { color: #c9d1d9; background: #1c2128; }
+    .card:focus { color: #e6edf3; background: #1a2744; text-style: bold; }
 
-    .card:focus {
-        background: $warning 15%;
-        color: $warning;
-        text-style: bold;
+    ModalScreen { align: center middle; background: #010409 80%; }
+    .modal_box {
+        width: 60; max-width: 85%; height: auto;
+        padding: 1 2 2 2; background: #161b22; border: round #388bfd;
     }
-
-    .card_title {
-        text-align: left;
-        height: 1;
-        max-height: 1;
-        overflow: hidden;
-        width: 100%;
+    .detail_box { width: 76; max-height: 70%; }
+    .modal_title {
+        width: 100%; text-align: center; color: #e6edf3; text-style: bold;
+        padding: 0 0 1 0; border-bottom: solid #21262d; margin-bottom: 1;
     }
-
-    /* ── Modals ── */
-    ModalScreen {
-        align: center middle;
-        background: $surface 60%;
-    }
-
-    .modal_dialog {
-        width: 60;
-        max-width: 80%;
-        height: auto;
-        max-height: 80%;
-        border: round $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-
-    .details_modal {
-        width: 72;
-    }
-
-    .modal_header {
-        text-style: bold;
-        width: 100%;
-        text-align: center;
-        margin-bottom: 1;
-        color: $text;
-    }
-
     .modal_body {
-        width: 100%;
-        height: auto;
-        max-height: 20;
-        overflow-y: auto;
-        margin-bottom: 1;
-        color: $text-muted;
+        width: 100%; height: auto; max-height: 24;
+        overflow-y: auto; color: #8b949e; padding: 0 0 1 0;
     }
+    .modal_input { margin: 1 0; border: round #30363d; background: #0d1117; }
+    .modal_input:focus { border: round #388bfd; }
+    .modal_row { width: 100%; height: auto; align: center middle; margin-top: 1; }
+    .modal_row Button { margin: 0 1; min-width: 12; }
 
-    .modal_buttons {
-        width: 100%;
-        height: auto;
-        align: center middle;
-        margin-top: 1;
-    }
-
-    .modal_buttons Button {
-        margin: 0 1;
-        min-width: 10;
-    }
-
-    Input {
-        margin: 1 0;
-    }
+    Input { border: round #30363d; background: #0d1117; margin: 1 0; }
+    Input:focus { border: round #388bfd; }
+    LoadingIndicator { color: #388bfd; background: #0d1117; }
     """
 
     BINDINGS = [("q", "quit", "Quit")]
