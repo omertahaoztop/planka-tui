@@ -379,10 +379,9 @@ class BoardScreen(Screen):
             self.notify("No card selected.", severity="warning")
             return
 
-        DONE_KW = {"done", "completed", "tamamlandı", "tamamlanan", "finished"}
         target_col: ListColumn | None = None
         for col in self.query(ListColumn):
-            if col.planka_list.name and col.planka_list.name.lower() in DONE_KW:
+            if col.planka_list._data.get("type") == "closed":
                 target_col = col
                 break
 
