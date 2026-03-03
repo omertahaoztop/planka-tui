@@ -51,7 +51,143 @@ from tui import ProjectBoardTree
 
 
 class PlankaApp(App):
-    CSS_PATH = "tui.css"
+    # Inline CSS — PyInstaller breaks CSS_PATH resolution in onefile mode
+    CSS = """
+    Screen {
+        background: $surface;
+    }
+
+    /* ── Dashboard ── */
+    #dashboard_container {
+        width: 100%;
+        height: 100%;
+        padding: 1 2;
+        background: $surface;
+    }
+
+    .title {
+        width: 100%;
+        text-align: center;
+        text-style: bold;
+        color: $text-muted;
+        padding: 1 0 0 0;
+    }
+
+    #project_tree {
+        margin: 1 2;
+    }
+
+    /* ── Board ── */
+    #board_container {
+        height: 1fr;
+        width: auto;
+        min-width: 100%;
+        overflow-x: auto;
+        background: $surface;
+    }
+
+    .list_column {
+        width: 44;
+        min-width: 44;
+        max-width: 44;
+        height: 100%;
+        padding: 0 1;
+        border-right: tall $warning 40%;
+        background: $surface;
+        scrollbar-size: 1 1;
+    }
+
+    .list_column:focus-within {
+        border-right: tall $warning;
+    }
+
+    .list_title {
+        width: 100%;
+        text-align: center;
+        text-style: bold;
+        color: $warning;
+        background: $surface;
+        height: 1;
+        max-height: 1;
+        overflow: hidden;
+    }
+
+    /* ── Cards ── */
+    .card {
+        height: 1;
+        max-height: 1;
+        padding: 0 1;
+        background: $surface;
+    }
+
+    .card:focus {
+        background: $warning 15%;
+        color: $warning;
+        text-style: bold;
+    }
+
+    .card_title {
+        text-align: left;
+        height: 1;
+        max-height: 1;
+        overflow: hidden;
+        width: 100%;
+    }
+
+    /* ── Modals ── */
+    ModalScreen {
+        align: center middle;
+        background: $surface 60%;
+    }
+
+    .modal_dialog {
+        width: 60;
+        max-width: 80%;
+        height: auto;
+        max-height: 80%;
+        border: round $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    .details_modal {
+        width: 72;
+    }
+
+    .modal_header {
+        text-style: bold;
+        width: 100%;
+        text-align: center;
+        margin-bottom: 1;
+        color: $text;
+    }
+
+    .modal_body {
+        width: 100%;
+        height: auto;
+        max-height: 20;
+        overflow-y: auto;
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+
+    .modal_buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        margin-top: 1;
+    }
+
+    .modal_buttons Button {
+        margin: 0 1;
+        min-width: 10;
+    }
+
+    Input {
+        margin: 1 0;
+    }
+    """
+
     BINDINGS = [("q", "quit", "Quit")]
 
     def on_mount(self) -> None:

@@ -1,89 +1,116 @@
+/* ── Global ── */
 Screen {
-    align: center middle;
+    background: $surface;
 }
 
+/* ── Dashboard ── */
 #dashboard_container {
-    width: 80%;
-    height: 80%;
-    border: solid green;
+    width: 100%;
+    height: 100%;
+    padding: 1 2;
 }
 
 .title {
-    content-align: center middle;
     width: 100%;
-    background: $primary;
-    color: $text;
-    margin-bottom: 1;
+    text-align: center;
+    text-style: bold;
+    color: $text-muted;
+    padding: 1 0 0 0;
 }
 
-/* Board Screen */
+#project_tree {
+    margin: 1 2;
+}
+
+/* ── Board ── */
 #board_container {
-    height: 100%;
+    height: 1fr;
     width: 100%;
     overflow-x: auto;
 }
 
 .list_column {
     width: 1fr;
-    min-width: 40;
+    min-width: 28;
     height: 100%;
-    margin: 1;
-    border: solid $secondary;
-    background: $surface;
+    padding: 0;
+    border-right: vkey $surface-lighten-2;
+    background: transparent;
+    scrollbar-size: 1 1;
 }
 
-.list_column:focus {
-    border: double $accent;
-    background: $surface-lighten-1;
-}
-
-.modal_header {
-    text-style: bold;
-    border-bottom: solid $primary;
-    margin-bottom: 1;
-    width: 100%;
-    text-align: center;
-    height: auto;
+.list_column:focus-within {
+    border-right: vkey $accent;
 }
 
 .list_title {
     width: 100%;
     text-align: center;
-    background: $accent;
-    color: $text;
-    padding: 1;
     text-style: bold;
+    color: $text;
+    background: $surface-lighten-1;
+    height: 1;
+    max-height: 1;
+    overflow: hidden;
+    margin-bottom: 1;
 }
 
+/* ── Cards ── */
 .card {
-    height: auto;
-    min-height: 3;
-    margin: 1;
-    padding: 1;
-    border: solid $primary;
-    background: $panel;
+    height: 1;
+    max-height: 1;
+    padding: 0 1;
+    background: transparent;
 }
 
 .card:focus {
-    border: double $accent;
-    background: $primary-darken-1;
+    background: $primary-background;
+    text-style: bold;
 }
 
 .card_title {
     text-align: left;
-    height: auto;
+    height: 1;
+    max-height: 1;
+    overflow: hidden;
     width: 100%;
 }
 
-/* Modal */
-.modal_dialog {
-    width: 60;
-    height: 14;
-    border: solid $accent;
-    background: $surface;
-    padding: 2;
+/* ── Modals ── */
+ModalScreen {
     align: center middle;
+    background: $surface 60%;
+}
+
+.modal_dialog {
+    width: 56;
+    max-width: 80%;
     height: auto;
+    max-height: 80%;
+    border: round $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+.details_modal {
+    width: 72;
+}
+
+.modal_header {
+    text-style: bold;
+    width: 100%;
+    text-align: center;
+    margin-bottom: 1;
+    color: $text;
+}
+
+.modal_body {
+    width: 100%;
+    height: auto;
+    max-height: 20;
+    overflow-y: auto;
+    margin-bottom: 1;
+    color: $text-muted;
 }
 
 .modal_buttons {
@@ -94,9 +121,10 @@ Screen {
 }
 
 .modal_buttons Button {
-    margin: 1;
+    margin: 0 1;
+    min-width: 10;
 }
 
 Input {
-    margin-top: 2;
+    margin: 1 0;
 }

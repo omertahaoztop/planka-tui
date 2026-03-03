@@ -2,80 +2,13 @@ import os
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
-from plankapy import (
-    Planka,
-    PasswordAuth,
-    Project,
-    Board,
-    List,
-    Card,
-    Label,
-    Task,
-    User,
-    Notification,
-    Action,
-    Archive,
-    Attachment,
-    CardLabel,
-    CardMembership,
-    CardSubscription,
-    IdentityUserProvider,
-    ProjectManager,
-)
+from plankapy.v2 import Planka
 
 CONFIG_SEARCH_PATHS = [
     Path("/etc/default/planka-tui"),
     Path.home() / ".config" / "planka-tui" / "config",
     Path.cwd() / ".env",
 ]
-
-# List of models to patch
-MODELS_TO_PATCH = [
-    Project,
-    Board,
-    List,
-    Card,
-    Label,
-    Task,
-    User,
-    Notification,
-    Action,
-    Archive,
-    Attachment,
-    CardLabel,
-    CardMembership,
-    CardSubscription,
-    IdentityUserProvider,
-    ProjectManager,
-]
-
-
-def make_safe_init(cls):
-    """
-    Creates a safe __init__ method for a dataclass-based model that ignores
-    unexpected keyword arguments.
-    """
-    # Capture the original __init__ (which comes from the dataclass)
-    original_init = cls.__init__
-
-    def safe_init(self, *args, **kwargs):
-        # Check if the instance has dataclass fields
-        if hasattr(self, "__dataclass_fields__"):
-            valid_fields = self.__dataclass_fields__.keys()
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_fields}
-        else:
-            # If not a dataclass (unlikely provided we act on plankapy models), pass through
-            filtered_kwargs = kwargs
-
-        original_init(self, *args, **filtered_kwargs)
-
-    return safe_init
-
-
-# Apply the patch to all models
-for model_cls in MODELS_TO_PATCH:
-    if hasattr(model_cls, "__init__"):
-        model_cls.__init__ = make_safe_init(model_cls)
 
 
 class PlankaClient:
@@ -93,7 +26,7 @@ class PlankaClient:
     @classmethod
     def get_instance(cls) -> Planka:
         if cls._instance is None:
-            loaded_from = cls._load_config()
+            cls._load_config()
 
             url = os.getenv("PLANKA_API_URL")
             username = os.getenv("PLANKA_USERNAME")
@@ -107,15 +40,21 @@ class PlankaClient:
                     f"Or export them as environment variables."
                 )
 
-            auth = PasswordAuth(username, password)
-            cls._instance = Planka(url, auth)
+            # v2 expects base URL without /api suffix
+            base_url = url.rstrip("/")
+            if base_url.endswith("/api"):
+                base_url = base_url[:-4]
+
+            planka = Planka(base_url)
+            planka.login(username=username, password=password)
+            cls._instance = planka
 
         return cls._instance
 
 
 if __name__ == "__main__":
     try:
-        updated_client = PlankaClient.get_instance()
-        print(f"Successfully connected to Planka at {updated_client._url}")
+        client = PlankaClient.get_instance()
+        print(f"Successfully connected to Planka as {client.me.name}")
     except Exception as e:
         print(f"Connection failed: {e}")

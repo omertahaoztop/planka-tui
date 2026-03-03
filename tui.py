@@ -1,24 +1,8 @@
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll, Grid
-from textual.widgets import (
-    Header,
-    Footer,
-    Button,
-    Label,
-    Tree,
-    Static,
-    ListItem,
-    ListView,
-    Input,
-)
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.widgets import Header, Footer, Button, Label, Tree, Static, Input
 from textual.screen import ModalScreen, Screen
-from textual.message import Message
-from textual.reactive import reactive
-from textual.worker import Worker, get_current_worker
-from textual.binding import Binding
-from textual import work
 from client import PlankaClient
-
 
 class ProjectBoardTree(Screen):
     """Screen to select a board from projects."""
@@ -39,8 +23,7 @@ class ProjectBoardTree(Screen):
 
         try:
             planka = PlankaClient.get_instance()
-            me = planka.me
-            projects = me.projects
+            projects = planka.projects
 
             for project in projects:
                 project_node = tree.root.add(project.name, expand=True)
@@ -67,10 +50,11 @@ class CardWidget(Static):
         self.card = card
 
     def compose(self) -> ComposeResult:
-        # Handle case where card.name might be None
         name = self.card.name if self.card.name else "Untitled Card"
+        # Truncate to fit column width (44 - 2 border - 2 padding = 40 usable)
+        if len(name) > 38:
+            name = name[:35] + "..."
         yield Label(name, classes="card_title")
-
 
 class ListColumn(VerticalScroll):
     """A column representing a list in the Kanban board."""
@@ -126,12 +110,11 @@ class ListColumn(VerticalScroll):
             cards[0].focus()
 
     def compose(self) -> ComposeResult:
-        # Handle case where planka_list.name might be None
         name = self.planka_list.name if self.planka_list.name else "Untitled List"
-        yield Label(name, classes="list_title")
-        for card in self.planka_list.cards:
+        cards = list(self.planka_list.cards)
+        yield Label(f"{name} ({len(cards)})", classes="list_title")
+        for card in cards:
             yield CardWidget(card, classes="card")
-
 
 class InputModal(ModalScreen[str]):
     """Modal to get text input from user."""
@@ -314,7 +297,7 @@ class BoardScreen(Screen):
                     # Using target_list_column.planka_list.create_card(name) if plankapy supports it
                     # Checking plankapy interfaces: List has 'create_card' or we use 'routes'
                     # Assuming typical model method:
-                    new_card = target_list_column.planka_list.create_card(name)
+                    new_card = target_list_column.planka_list.create_card(name=name)
 
                     # Update UI
                     target_list_column.mount(CardWidget(new_card, classes="card"))
@@ -379,15 +362,13 @@ class BoardScreen(Screen):
             self.notify("Could not find a 'Done' list.", severity="warning")
             return
 
-        if target_planka_list.id == card_widget.card.listId:
+        if target_planka_list.id == card_widget.card.schema['listId']:
             self.notify("Card is already in Done list.")
             return
 
         try:
-            # Move via API
-            # Card update: listId = new_id
-            with card_widget.card.editor():
-                card_widget.card.listId = target_planka_list.id
+            # Move via API (v2)
+            card_widget.card.move(target_planka_list)
 
             # UI Update: Remove from current, add to new
             card_widget.remove()
